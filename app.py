@@ -55,23 +55,90 @@ st.markdown("""
 
 def load_data():
     """Load and process the CTR data"""
-    try:
-        # Try to load from the CSV file in the repo
-        df = pd.read_csv('CTR_Study_data.csv')
-    except FileNotFoundError:
-        # Create sample data if file not found
-        st.warning("CSV file not found. Using sample data for demonstration.")
+    # Try different possible filenames
+    possible_filenames = [
+        'CTR_Study_data.csv',
+        'CTR Study - data.csv',
+        'ctr-study-data.csv',
+        'data.csv',
+        'CTR_data.csv'
+    ]
+    
+    for filename in possible_filenames:
+        try:
+            # Read CSV with special handling for quoted numbers and commas
+            df = pd.read_csv(
+                filename,
+                thousands=',',
+                quotechar='"',
+                skipinitialspace=True,
+                na_values=['', 'NULL', 'null', 'NaN'],
+                keep_default_na=True
+            )
+            
+            # Check if dataframe is empty
+            if df.empty:
+                st.warning(f"⚠️ File {filename} is empty.")
+                continue
+                
+            # Check if required columns exist
+            required_columns = ['Date', 'Primary Industry', 'Clicks', 'Impressions', 'CTR']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            
+            if missing_columns:
+                st.error(f"❌ Missing columns in {filename}: {missing_columns}")
+                st.write(f"Available columns: {list(df.columns)}")
+                continue
+            
+            st.success(f"✅ Successfully loaded {len(df)} rows from: {filename}")
+            break
+            
+        except pd.errors.EmptyDataError:
+            st.error(f"❌ File {filename} is empty or corrupted.")
+            continue
+        except pd.errors.ParserError as e:
+            st.error(f"❌ Parse error in {filename}: {str(e)}")
+            continue
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            st.error(f"❌ Error reading {filename}: {str(e)}")
+            continue
+    else:
+        # If no file found or all failed, show error and use sample data
+        st.error("❌ Could not load any CSV file. Please check:")
+        st.write("• File exists in the repository")
+        st.write("• File is not empty") 
+        st.write("• File has the correct format")
+        st.warning("Using sample data for demonstration.")
         return create_sample_data()
     
     # Process the data
-    df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y')
-    
-    # Clean numeric columns
-    df['Clicks'] = df['Clicks'].astype(str).str.replace(',', '').astype(int)
-    df['Impressions'] = df['Impressions'].astype(str).str.replace(',', '').astype(int)
-    df['CTR'] = df['CTR'].astype(str).str.replace('%', '').astype(float)
-    
-    return df
+    try:
+        df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
+        
+        # Clean numeric columns - handle quoted numbers with commas
+        if 'Clicks' in df.columns:
+            df['Clicks'] = df['Clicks'].astype(str).str.replace(',', '').str.replace('"', '').astype(float).fillna(0).astype(int)
+        
+        if 'Impressions' in df.columns:
+            df['Impressions'] = df['Impressions'].astype(str).str.replace(',', '').str.replace('"', '').astype(float).fillna(0).astype(int)
+        
+        if 'CTR' in df.columns:
+            df['CTR'] = df['CTR'].astype(str).str.replace('%', '').str.replace('"', '').astype(float).fillna(0)
+        
+        # Remove rows with invalid dates
+        df = df.dropna(subset=['Date'])
+        
+        if df.empty:
+            st.error("❌ No valid data rows after processing.")
+            return create_sample_data()
+            
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ Error processing data: {str(e)}")
+        return create_sample_data()
 
 def create_sample_data():
     """Create sample data for demonstration"""
